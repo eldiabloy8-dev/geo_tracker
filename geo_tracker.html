@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geo Tracker Pro | Sales Point Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        :root { --sidebar-bg: #1e293b; --main-bg: #f8fafc; --accent: #0ea5e9; --text-light: #f8fafc; --label-muted: #cbd5e1; }
+        body { background-color: var(--main-bg); font-family: 'Plus Jakarta Sans', sans-serif; color: #1e293b; }
+        .sidebar { background: var(--sidebar-bg); height: 100vh; position: sticky; top: 0; padding: 30px 20px; color: var(--text-light); box-shadow: 4px 0 10px rgba(0,0,0,0.1); overflow-y: auto; }
+        .brand-logo { font-weight: 800; font-size: 1.4rem; color: var(--accent); letter-spacing: -0.5px; margin-bottom: 35px; }
+        .form-label-custom { color: var(--label-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 8px; }
+        .form-control-custom { background: #334155; border: 1px solid #475569; color: white; border-radius: 8px; font-size: 0.9rem; padding: 10px; }
+        #map { height: 500px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+        .kpi-card { background: #334155; padding: 18px; border-radius: 12px; margin-bottom: 12px; border-left: 5px solid var(--accent); }
+        .kpi-title { font-size: 0.7rem; font-weight: 800; color: var(--label-muted); text-transform: uppercase; }
+        .kpi-value { font-size: 1.6rem; font-weight: 800; color: white; line-height: 1; margin-top: 5px; }
+        .nav-pills .nav-link { color: #64748b; font-weight: 600; border-radius: 10px; padding: 10px 20px; }
+        .nav-pills .nav-link.active { background: var(--accent); color: white; }
+        .route-picker-area { background: #f8fafc; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; max-height: 300px; overflow-y: auto; }
+        .agg-card { background: #e0f2fe; border: 1px solid #bae6fd; }
+        .outlet-list-group { max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+        .outlet-item { padding: 12px 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: 0.2s; font-size: 0.85rem; color: #475569; }
+        .outlet-item:hover { background: #f0f9ff; color: var(--accent); font-weight: 600; }
+        .outlet-item.active { background: var(--accent); color: white; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-3 sidebar">
+            <div class="brand-logo">GEO TRACKER PRO</div>
+            <div class="mb-4">
+                <label class="form-label-custom">1. Data Synchronization</label>
+                <select id="salesPoint" class="form-control form-control-custom mb-2">
+                    <option value="Maijdee">Maijdee</option>
+                    <option value="Udarhat">Udarhat</option>
+                </select>
+                <input type="date" id="uploadDate" class="form-control form-control-custom mb-2">
+                <input type="file" id="fileInput" class="form-control form-control-custom mb-2" accept=".xlsx, .xls, .csv">
+                <button class="btn btn-primary w-100 fw-bold btn-sm py-2" onclick="uploadData()">SYNC TO DATABASE</button>
+            </div>
+            <button class="btn btn-outline-danger btn-sm w-100 mb-4 fw-bold" onclick="wipeData()">RESET SYSTEM</button>
+            
+            <div class="kpi-card"><div class="kpi-title">Total Visits</div><div class="kpi-value" id="kpi-total">0</div></div>
+            <div class="kpi-card" style="border-color: #f59e0b;"><div class="kpi-title">Duplicates</div><div class="kpi-value" id="kpi-dups">0</div></div>
+            <div class="kpi-card" style="border-color: #ef4444;"><div class="kpi-title">Geo Violations</div><div class="kpi-value" id="kpi-wrong">0</div></div>
+        </div>
+
+        <div class="col-lg-9 p-4">
+            <ul class="nav nav-pills mb-4" id="mainTabs">
+                <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#summary-view">Summary</button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#map-view">Live Map</button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#comp-view">Monthly Variance</button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#outlet-view" onclick="populateDrillFilters()">Drill-Down</button></li>
+                <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#filter-view" onclick="refreshView()">Settings</button></li>
+            </ul>
+            
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="summary-view">
+                    <div class="card p-3 shadow-sm rounded-4 border-0 mb-4 agg-card">
+                        <h6 class="fw-bold text-dark mb-3">Sales Point Comparison Summary</h6>
+                        <table class="table table-sm table-hover m-0">
+                            <thead class="table-light"><tr><th>Sales Point</th><th>Total Visits</th><th>Unique Outlets</th><th>Violations</th><th>Duplicates</th></tr></thead>
+                            <tbody id="territory-agg-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="map-view"><div id="map"></div></div>
+
+                <div class="tab-pane fade" id="comp-view">
+                    <div class="card p-4 shadow-sm rounded-4 border-0">
+                        <h6 class="fw-bold mb-4 text-center">Date-Wise Variance Details</h6>
+                        <div class="row justify-content-center mb-4 g-2">
+                            <div class="col-md-3">
+                                <label class="small fw-bold text-muted">Filter Point</label>
+                                <select id="compPoint" class="form-control form-control-sm" onchange="runComp()">
+                                    <option value="ALL">All Points</option>
+                                    <option value="Maijdee">Maijdee</option>
+                                    <option value="Udarhat">Udarhat</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold text-muted">Select Month</label>
+                                <input type="month" id="compMonth" class="form-control form-control-sm" onchange="runComp()">
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm text-center">
+                                <thead><tr><th>Date</th><th>Visits</th><th>Dups</th><th>Geo Viol.</th><th>Delta</th></tr></thead>
+                                <tbody id="variance-report-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="outlet-view">
+                    <div class="row g-4">
+                        <div class="col-md-4">
+                            <div class="card p-4 shadow-sm rounded-4 border-0">
+                                <h6 class="fw-bold mb-3 text-primary">Drill-Down Filters</h6>
+                                <label class="form-label-custom text-dark">1. Sales Point</label>
+                                <select id="drillPoint" class="form-control mb-3" onchange="populateDrillRoutes()">
+                                    <option value="ALL">All Points</option>
+                                    <option value="Maijdee">Maijdee</option>
+                                    <option value="Udarhat">Udarhat</option>
+                                </select>
+                                <label class="form-label-custom text-dark">2. Route</label>
+                                <select id="drillRoute" class="form-control mb-4" onchange="populateOutletList()">
+                                    <option value="">-- Choose Route --</option>
+                                </select>
+                                <h6 class="fw-bold mb-2 small text-muted">3. Choose Outlet</h6>
+                                <div id="outletClickList" class="outlet-list-group"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="card p-4 shadow-sm rounded-4 border-0 h-100">
+                                <h6 class="fw-bold mb-4 text-dark" id="drillTitle">Outlet Performance History</h6>
+                                <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Date</th><th>Geo (m)</th><th>Status</th></tr></thead><tbody id="outlet-drill-body"></tbody></table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="filter-view">
+                    <div class="card p-4 shadow-sm rounded-4 border-0">
+                        <h6 class="fw-bold mb-3 text-primary">Global Filter Settings</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold small text-muted mb-0">Road Segments</h6>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="selectAllRoutes" checked onchange="toggleAllRoutes(this)">
+                                <label class="form-check-label small fw-bold" for="selectAllRoutes">Select/Unselect All</label>
+                            </div>
+                        </div>
+                        <div id="routePicker" class="route-picker-area"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+<script>
+    let db;
+    const dbName = "GeoTrackerProFusionV21";
+    let map = L.map('map', { zoomControl: false }).setView([22.825, 91.101], 12);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    let clusters = L.markerClusterGroup({ chunkedLoading: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    map.addLayer(clusters);
+
+    const openDB = () => {
+        const request = indexedDB.open(dbName, 2);
+        request.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (d.objectStoreNames.contains("visits")) d.deleteObjectStore("visits");
+            d.createObjectStore("visits", { autoIncrement: true });
+        };
+        request.onsuccess = e => { db = e.target.result; refreshView(); };
+    };
+    openDB();
+
+    function uploadData() {
+        const fileInput = document.getElementById('fileInput');
+        const dateInput = document.getElementById('uploadDate');
+        const pointInput = document.getElementById('salesPoint');
+        
+        if(!fileInput.files.length || !dateInput.value) return alert("Select a file and date.");
+        
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                const tx = db.transaction("visits", "readwrite");
+                const store = tx.objectStore("visits");
+                
+                rawData.forEach(r => {
+                    // Update: Hard mapping selected point to data to ensure summary updates correctly
+                    let spValue = pointInput.value; 
+                    
+                    store.add({
+                        ...r,
+                        _date: dateInput.value,
+                        _salesPoint: spValue,
+                        'Route Name': r['Route Name'] || 'Unknown',
+                        'Outlet Code': r['Outlet Code'] || 'N/A',
+                        'CheckIn Distance (meter)': parseFloat(r['CheckIn Distance (meter)']) || 0
+                    });
+                });
+                
+                tx.oncomplete = () => { 
+                    refreshView(); 
+                    alert("Sync Successful for " + pointInput.value); 
+                };
+            } catch (err) { alert("Error reading Excel file."); }
+        };
+        reader.readAsArrayBuffer(fileInput.files[0]);
+    }
+
+    function refreshView() {
+        if(!db) return;
+        db.transaction("visits", "readonly").objectStore("visits").getAll().onsuccess = e => {
+            const allData = e.target.result;
+            const routes = [...new Set(allData.map(r => r['Route Name']))].sort();
+            const container = document.getElementById('routePicker');
+            const selectAll = document.getElementById('selectAllRoutes');
+            
+            if(routes.length > 0) {
+                container.innerHTML = routes.map(r => `
+                    <div class="form-check form-check-inline me-3 mb-2">
+                        <input class="form-check-input r-cb-main" type="checkbox" value="${r}" ${selectAll.checked ? 'checked' : ''} onchange="processFinalData()">
+                        <label class="form-check-label small">${r}</label>
+                    </div>`).join('');
+            }
+            processFinalData();
+        };
+    }
+
+    function toggleAllRoutes(source) {
+        document.querySelectorAll('.r-cb-main').forEach(cb => cb.checked = source.checked);
+        processFinalData();
+    }
+
+    function processFinalData() {
+        db.transaction("visits", "readonly").objectStore("visits").getAll().onsuccess = e => {
+            const allData = e.target.result;
+            const selRoutes = Array.from(document.querySelectorAll('.r-cb-main:checked')).map(cb => cb.value);
+            const filtered = allData.filter(r => selRoutes.includes(r['Route Name']));
+            updateAnalytics(allData, filtered);
+            updateMap(filtered);
+        };
+    }
+
+    function updateAnalytics(allData, filtered) {
+        let vT = 0, dT = 0, wT = 0, seen = {};
+        filtered.forEach(row => {
+            vT++;
+            const id = row['Outlet Code'];
+            seen[id] = (seen[id] || 0) + 1;
+            if(seen[id] > 1) dT++;
+            if(parseFloat(row['CheckIn Distance (meter)']) > 30) wT++;
+        });
+        
+        document.getElementById('kpi-total').innerText = vT;
+        document.getElementById('kpi-dups').innerText = dT;
+        document.getElementById('kpi-wrong').innerText = wT;
+
+        let pointHtml = '';
+        // Updated labels to Udarhat
+        ["Maijdee", "Udarhat"].forEach(p => {
+            const pData = allData.filter(r => r._salesPoint === p);
+            const pOutlets = new Set(pData.map(r => r['Outlet Code']));
+            let pV = 0, pD = 0, dSeen = {};
+            pData.forEach(r => {
+                if(parseFloat(r['CheckIn Distance (meter)']) > 30) pV++;
+                dSeen[r['Outlet Code']] = (dSeen[r['Outlet Code']] || 0) + 1;
+                if(dSeen[r['Outlet Code']] > 1) pD++;
+            });
+            pointHtml += `<tr><td>${p}</td><td>${pData.length}</td><td>${pOutlets.size}</td><td class="text-danger">${pV}</td><td class="text-warning">${pD}</td></tr>`;
+        });
+        document.getElementById('territory-agg-table').innerHTML = pointHtml;
+    }
+
+    function updateMap(data) {
+        clusters.clearLayers();
+        const markers = data.filter(r => r['Base Lat'] && r['Base Long']).map(r => 
+            L.marker([r['Base Lat'], r['Base Long']]).bindPopup(`<b>${r['Outlet Name']}</b><br>Dist: ${r['CheckIn Distance (meter)']}m`)
+        );
+        clusters.addLayers(markers);
+        if(markers.length > 0) map.fitBounds(clusters.getBounds());
+    }
+
+    function populateDrillFilters() { populateDrillRoutes(); }
+    function populateDrillRoutes() {
+        const p = document.getElementById('drillPoint').value;
+        db.transaction("visits", "readonly").objectStore("visits").getAll().onsuccess = e => {
+            const data = p === "ALL" ? e.target.result : e.target.result.filter(r => r._salesPoint === p);
+            const routes = [...new Set(data.map(r => r['Route Name']))].sort();
+            document.getElementById('drillRoute').innerHTML = '<option value="">-- Choose Route --</option>' + routes.map(r => `<option value="${r}">${r}</option>`).join('');
+        };
+    }
+    function populateOutletList() {
+        const route = document.getElementById('drillRoute').value;
+        db.transaction("visits", "readonly").objectStore("visits").getAll().onsuccess = e => {
+            const outlets = [...new Map(e.target.result.filter(r => r['Route Name'] === route).map(o => [o['Outlet Code'], o])).values()].sort((a,b) => (a['Outlet Name'] || '').localeCompare(b['Outlet Name'] || ''));
+            document.getElementById('outletClickList').innerHTML = outlets.map(o => `<div class="outlet-item" onclick="loadOutletDetails('${o['Outlet Code']}', '${o['Outlet Name']}', this)">${o['Outlet Name']} (${o['Outlet Code']})</div>`).join('');
+        };
+    }
+    function loadOutletDetails(code, name, el) {
+        document.querySelectorAll('.outlet-item').forEach(i => i.classList.remove('active')); el.classList.add('active');
+        document.getElementById('drillTitle').innerText = name;
+        db.transaction("visits", "readonly").objectStore("visits").getAll().onsuccess = e => {
+            const history = e.target.result.filter(r => r['Outlet Code'] === code).sort((a,b) => new Date(a._date) - new Date(b._date));
+            document.getElementById('outlet-drill-body').innerHTML = history.map(v => {
+                const dist = v['CheckIn Distance (meter)'] || 0;
+                return `<tr><td>${v._date}</td><td class="${dist > 30 ? 'text-danger fw-bold' : ''}">${dist}m</td><td>${dist > 30 ? 'Violation' : 'OK'}</td></tr>`;
+            }).join('');
+        };
+    }
+
+    function runComp() {
+        const month = document.getElementById('compMonth').value;
+        const pFilter = document.getElementById('compPoint').value;
+        if(!month) return;
+        db.transaction("visits", "readonly").objectStore("visits").getAll().onsuccess = e => {
+            const days = {};
+            let data = e.target.result.filter(r => r._date.startsWith(month));
+            if(pFilter !== "ALL") data = data.filter(r => r._salesPoint === pFilter);
+            data.forEach(r => {
+                if(!days[r._date]) days[r._date] = { v: 0, d: 0, w: 0, o: {} };
+                days[r._date].v++;
+                days[r._date].o[r['Outlet Code']] = (days[r._date].o[r['Outlet Code']] || 0) + 1;
+                if(days[r._date].o[r['Outlet Code']] > 1) days[r._date].d++;
+                if(parseFloat(r['CheckIn Distance (meter)']) > 30) days[r._date].w++;
+            });
+            let html = '', lastW = null;
+            Object.keys(days).sort().forEach(d => {
+                const s = days[d];
+                let varD = '-'; if(lastW !== null) { const diff = s.w - lastW; varD = `<span class="${diff > 0 ? 'text-danger' : 'text-success'} fw-bold">${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)}</span>`; }
+                html += `<tr><td>${d}</td><td>${s.v}</td><td>${s.d}</td><td>${s.w}</td><td>${varD}</td></tr>`;
+                lastW = s.w;
+            });
+            document.getElementById('variance-report-body').innerHTML = html || '<tr><td colspan="5">No data.</td></tr>';
+        };
+    }
+
+    function wipeData() { if(confirm("Permanently wipe all database records?")) { db.close(); indexedDB.deleteDatabase(dbName); location.reload(); } }
+</script>
+</body>
+</html>
