@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geo Tracker</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>Geo Tracker</h1>
+    <div id="map"></div>
+</div>
+
+<script>
+    async function uploadData(fileData) {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: fileData
+        });
+        if (!response.ok) {
+            throw new Error('Upload failed');
+        }
+    }
+
+    async function refreshView() {
+        const response = await fetch('/api/visits');
+        if (!response.ok) {
+            throw new Error('Failed to fetch visits');
+        }
+        const visits = await response.json();
+        // Code to update the UI with visits data.
+    }
+
+    async function processFinalData() {
+        const response = await fetch('/api/visits');
+        if (!response.ok) {
+            throw new Error('Failed to fetch final data');
+        }
+        const data = await response.json();
+        // Code to process final data and update the UI.
+    }
+
+    async function updateAnalytics() {
+        const response = await fetch('/api/analytics');
+        if (!response.ok) {
+            throw new Error('Failed to fetch analytics');
+        }
+        const analytics = await response.json();
+        // Code to update the UI with analytics data.
+    }
+
+    async function fetchMarkerData() {
+        const response = await fetch('/api/markers');
+        if (!response.ok) {
+            throw new Error('Failed to fetch markers');
+        }
+        const markers = await response.json();
+        // Code to place markers on the map.
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialization code here
+        fetchMarkerData();
+        refreshView();
+        updateAnalytics();
+    });
+</script>
+
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
